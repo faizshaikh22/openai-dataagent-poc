@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenAI Data Agent POC</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .chat-container { border: 1px solid #ddd; padding: 20px; height: 500px; overflow-y: scroll; margin-bottom: 20px; }
+        .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; }
+        .user { background-color: #e3f2fd; text-align: right; }
+        .agent { background-color: #f5f5f5; text-align: left; }
+        .thoughts { font-size: 0.85em; color: #555; background-color: #eee; border-left: 3px solid #ccc; padding: 10px; margin-top: 10px; display: none; white-space: pre-wrap; }
+        .toggle-thoughts { font-size: 0.8em; color: #0066cc; cursor: pointer; margin-left: 10px; }
+        input[type="text"] { width: 70%; padding: 10px; }
+        button { padding: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Data Agent POC</h1>
+    <div id="chat-box" class="chat-container"></div>
+    <div style="display: flex; gap: 10px;">
+        <input type="text" id="user-input" placeholder="Ask a data question (e.g., 'Top 5 customers by spend')" onkeypress="if(event.keyCode==13) sendMessage()">
+        <button onclick="sendMessage()">Send</button>
+        <button onclick="resetAgent()" style="background-color: #ffcccc;">Reset Memory</button>
+    </div>
+
+    <script>
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const message = input.value;
+            if (!message) return;
+
+            appendMessage('User', message, 'user');
+            input.value = '';
+
+            // Show loading
+            const loadingId = appendMessage('Agent', 'Thinking...', 'agent');
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message})
+                });
+                const data = await response.json();
+
+                const msgDiv = document.getElementById(loadingId);
+
+                // Parse markdown for the reply
+                msgDiv.innerHTML = marked.parse(data.reply);
+
+                // Add thoughts
+                if (data.thoughts && data.thoughts.length > 0) {
+                    const toggle = document.createElement('span');
+                    toggle.className = 'toggle-thoughts';
+                    toggle.innerText = '[Show Reasoning]';
+
+                    const thoughtDiv = document.createElement('div');
+                    thoughtDiv.className = 'thoughts';
+                    // Clean up thoughts for display
+                    thoughtDiv.innerText = data.thoughts.join('\n\n');
+
+                    toggle.onclick = () => {
+                        const isHidden = thoughtDiv.style.display === 'none';
+                        thoughtDiv.style.display = isHidden ? 'block' : 'none';
+                        toggle.innerText = isHidden ? '[Hide Reasoning]' : '[Show Reasoning]';
+                    };
+
+                    msgDiv.appendChild(toggle);
+                    msgDiv.appendChild(thoughtDiv);
+                }
+            } catch (error) {
+                document.getElementById(loadingId).innerText = 'Error: ' + error;
+            }
+        }
+
+        function appendMessage(sender, text, type) {
+            const box = document.getElementById('chat-box');
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.id = 'msg-' + Date.now();
+            if (type === 'user') {
+                div.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            } else {
+                div.innerText = text; // Placeholder
+            }
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+            return div.id;
+        }
+
+        async function resetAgent() {
+            await fetch('/reset', {method: 'POST'});
+            document.getElementById('chat-box').innerHTML = '';
+            alert('Agent memory reset.');
+        }
+    </script>
+</body>
+</html>
