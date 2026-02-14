@@ -1,0 +1,76 @@
+{
+  "summary": {
+    "total_tests": 3,
+    "passed": 0,
+    "failed": 3,
+    "pass_rate": 0.0,
+    "average_score": 0.3611111111111111,
+    "results": [
+      {
+        "test_id": "main_3098",
+        "question": "What is the total payroll by agency for fiscal year 2016?",
+        "passed": false,
+        "score": 0.4166666666666667,
+        "reasoning": "Structure: Aggregations: expected {'sum', 'count'}, got {'sum'}\nResults: Column count mismatch: expected 3, got 2"
+      },
+      {
+        "test_id": "main_3029",
+        "question": "Who are the top 10 highest paid employees in the Police Department?",
+        "passed": false,
+        "score": 0.5,
+        "reasoning": "Structure: Structures match\nResults: Column count mismatch: expected 4, got 6"
+      },
+      {
+        "test_id": "main_5736",
+        "question": "What is the average overtime pay by borough for employees who worked more than 100 OT hours?",
+        "passed": false,
+        "score": 0.16666666666666666,
+        "reasoning": "Structure: has_order_by: expected True, got False; has_having: expected True, got False; has_limit: expected False, got True; Aggregations: expected {'avg', 'count'}, got {'avg'}\nResults: Row count mismatch: expected 9, got 11"
+      }
+    ]
+  },
+  "detailed_results": [
+    {
+      "test_id": "main_3098",
+      "question": "What is the total payroll by agency for fiscal year 2016?",
+      "passed": false,
+      "generated_sql": "SELECT \n    agency_name,\n    SUM(CAST(REPLACE(regular_gross_paid, '$', '') AS REAL)) + \n    SUM(CAST(REPLACE(total_ot_paid, '$', '') AS REAL)) + \n    SUM(CAST(REPLACE(total_other_pay, '$', '') AS REAL)) AS total_payroll\nFROM payroll\nWHERE fiscal_year = 2016\nGROUP BY agency_name\nORDER BY total_payroll DESC\nLIMIT 100;",
+      "expected_sql": "SELECT \n  agency_name,\n  SUM(CAST(REPLACE(regular_gross_paid, '$', '') AS REAL)) as total_payroll,\n  COUNT(*) as employee_count\nFROM payroll\nWHERE fiscal_year = 2016\nGROUP BY agency_name\nORDER BY total_payroll DESC\nLIMIT 100\n",
+      "score": 0.4166666666666667,
+      "reasoning": "Structure: Aggregations: expected {'sum', 'count'}, got {'sum'}\nResults: Column count mismatch: expected 3, got 2",
+      "details": {
+        "structural_score": 0.8333333333333334,
+        "results_match": false,
+        "llm_reasoning": "The user wants to know the total payroll by agency for fiscal year 2016. \n\nLooking at the schema, I need to:\n1. Filter for fiscal_year = 2016\n2. Group by agency_name\n3. Calculate total payroll - this would likely be the sum of regular_gross_paid, total_ot_paid, and total_other_pay\n\nSince the monetary columns (regular_gross_paid, total_ot_paid, total_other_pay) are stored as TEXT with '$' symbols, I need to strip the '$' and cast to numeric for calculations.\n\nLet me write the SQL query:\n\n```sql\nSELECT \n    agency_name,\n    SUM(CAST(REPLACE(regular_gross_paid, '$', '') AS REAL)) + \n    SUM(CAST(REPLACE(total_ot_paid, '$', '') AS REAL)) + \n    SUM(CAST(REPLACE(total_other_pay, '$', '') AS REAL)) AS total_payroll\nFROM payroll\nWHERE fiscal_year = 2016\nGROUP BY agency_name\nORDER BY total_payroll DESC\nLIMIT 100;\n```\n\nThis should give the total payroll by agency for fiscal year 2016, ordered from highest to lowest total payroll."
+      }
+    },
+    {
+      "test_id": "main_3029",
+      "question": "Who are the top 10 highest paid employees in the Police Department?",
+      "passed": false,
+      "generated_sql": "SELECT \n    first_name,\n    last_name,\n    title_description,\n    agency_name,\n    base_salary,\n    fiscal_year\nFROM payroll\nWHERE agency_name LIKE '%POLICE%'\nORDER BY CAST(REPLACE(base_salary, '$', '') AS REAL) DESC\nLIMIT 10;",
+      "expected_sql": "SELECT \n  first_name,\n  last_name,\n  title_description,\n  CAST(REPLACE(regular_gross_paid, '$', '') AS REAL) as total_pay\nFROM payroll\nWHERE agency_name LIKE '%POLICE%'\n  AND fiscal_year = 2016\nORDER BY total_pay DESC\nLIMIT 10\n",
+      "score": 0.5,
+      "reasoning": "Structure: Structures match\nResults: Column count mismatch: expected 4, got 6",
+      "details": {
+        "structural_score": 1.0,
+        "results_match": false,
+        "llm_reasoning": "The user wants to find the top 10 highest paid employees in the Police Department. \n\nLet me analyze the table structure:\n- The table is `payroll`\n- I need to filter by `agency_name` for Police Department\n- I need to order by salary - I can use `base_salary` or `regular_gross_paid` for this\n- Since `base_salary` is the base salary rate, it's probably the best measure for \"highest paid\"\n- The salary columns are TEXT with '$' prefix, so I need to use `CAST(REPLACE(base_salary, '$', '') AS REAL)` for proper sorting\n\nLet me write the query:\n1. Filter where agency_name contains \"POLICE\" (using LIKE for loose matching)\n2. Order by base_salary descending (after stripping $ and casting to REAL)\n3. Limit to 10 results\n4. Select relevant columns like name, title, base_salary, etc.\n\nI should also consider that there might be multiple fiscal years, so I might want to get the most recent data or handle duplicates. But the user didn't specify, so I'll just get the top 10 highest base_salary records.\n\nLet me write the SQL:\n\n```sql\nSELECT \n    first_name,\n    last_name,\n    title_description,\n    agency_name,\n    base_salary,\n    fiscal_year\nFROM payroll\nWHERE agency_name LIKE '%POLICE%'\nORDER BY CAST(REPLACE(base_salary, '$', '') AS REAL) DESC\nLIMIT 10;\n```\n\nThis should give the top 10 highest paid employees in the Police Department based on base salary."
+      }
+    },
+    {
+      "test_id": "main_5736",
+      "question": "What is the average overtime pay by borough for employees who worked more than 100 OT hours?",
+      "passed": false,
+      "generated_sql": "SELECT\n  work_location_borough,\n  AVG(CAST(REPLACE(total_ot_paid, '$', '') AS REAL)) AS average_overtime_pay\nFROM payroll\nWHERE ot_hours > 100\nGROUP BY work_location_borough\nLIMIT 100;",
+      "expected_sql": "SELECT \n  work_location_borough,\n  AVG(CAST(REPLACE(total_ot_paid, '$', '') AS REAL)) as avg_ot_pay,\n  AVG(CAST(ot_hours AS REAL)) as avg_ot_hours,\n  COUNT(*) as employee_count\nFROM payroll\nWHERE fiscal_year = 2016\n  AND CAST(ot_hours AS REAL) > 100\nGROUP BY work_location_borough\nHAVING COUNT(*) >= 10\nORDER BY avg_ot_pay DESC\n",
+      "score": 0.16666666666666666,
+      "reasoning": "Structure: has_order_by: expected True, got False; has_having: expected True, got False; has_limit: expected False, got True; Aggregations: expected {'avg', 'count'}, got {'avg'}\nResults: Row count mismatch: expected 9, got 11",
+      "details": {
+        "structural_score": 0.3333333333333333,
+        "results_match": false,
+        "llm_reasoning": "1.  **Understand the Goal**: The user wants to find the average overtime pay, grouped by borough, but only for employees who worked more than 100 overtime hours.\n\n2.  **Identify the Table**: The table is `payroll`.\n\n3.  **Identify the Columns**:\n    *   Borough: `work_location_borough`.\n    *   Overtime Hours: `ot_hours`.\n    *   Overtime Pay: `total_ot_paid`.\n\n4.  **Handle Data Types**:\n    *   `ot_hours` is `REAL` (numeric), so I can compare it directly (`> 100`).\n    *   `total_ot_paid` is `TEXT` with a '$' symbol. I need to clean it: `REPLACE(total_ot_paid, '$', '')` and then cast it to numeric: `CAST(... AS REAL)`.\n\n5.  **Construct the Query**:\n    *   `SELECT work_location_borough, AVG(CAST(REPLACE(total_ot_paid, '$', '') AS REAL)) as average_ot_pay`\n    *   `FROM payroll`\n    *   `WHERE ot_hours > 100`\n    *   `GROUP BY work_location_borough`\n    *   `ORDER BY average_ot_pay DESC` (Optional but good for presentation).\n\n6.  **Refine the Query**:\n    *   Check for NULLs or empty strings? The prompt implies standard SQL. `ot_hours` is REAL, so `> 100` handles nulls implicitly (false). `total_ot_paid` might have issues if not properly formatted, but the prompt says \"Salary/Money fields are TEXT with '$'\".\n    *   The prompt asks for \"average overtime pay by borough\".\n    *   Limit? The prompt says \"Always LIMIT results to 100 unless specified otherwise\". Since this is an aggregation, the number of boroughs is small, but I should include the limit to follow the rules strictly.\n\n7.  **Final SQL Structure**:\n    ```sql\n    SELECT\n      work_location_borough,\n      AVG(CAST(REPLACE(total_ot_paid, '$', '') AS REAL)) AS average_overtime_pay\n    FROM payroll\n    WHERE ot_hours > 100\n    GROUP BY work_location_borough\n    LIMIT 100;\n    ```\n\n8.  **Double Check**:\n    *   Did I strip the '$'? Yes.\n    *   Did I cast to REAL? Yes.\n    *   Did I filter by > 100 OT hours? Yes.\n    *   Did I group by borough? Yes.\n    *   Is the limit there? Yes.\n\n    Looks good."
+      }
+    }
+  ]
+}

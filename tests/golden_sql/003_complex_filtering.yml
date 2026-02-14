@@ -1,0 +1,42 @@
+question: "What is the average overtime pay by borough for employees who worked more than 100 OT hours?"
+description: "Filtered aggregation with HAVING clause"
+difficulty: hard
+tables_involved:
+  - payroll
+
+columns_involved:
+  - work_location_borough
+  - ot_hours
+  - total_ot_paid
+
+expected_sql: |
+  SELECT 
+    work_location_borough,
+    AVG(CAST(REPLACE(total_ot_paid, '$', '') AS REAL)) as avg_ot_pay,
+    AVG(CAST(ot_hours AS REAL)) as avg_ot_hours,
+    COUNT(*) as employee_count
+  FROM payroll
+  WHERE fiscal_year = 2016
+    AND CAST(ot_hours AS REAL) > 100
+  GROUP BY work_location_borough
+  HAVING COUNT(*) >= 10
+  ORDER BY avg_ot_pay DESC
+
+test_cases:
+  - question: "Which boroughs have the highest average overtime payments for workers with 100+ OT hours?"
+    should_pass: true
+    
+  - question: "Average OT pay by location for heavy overtime workers"
+    should_pass: true
+    notes: "'location' should map to work_location_borough"
+
+success_criteria:
+  must_include:
+    - "GROUP BY work_location_borough"
+    - "AVG"
+    - "> 100"
+  
+  sql_structure:
+    - has_where_clause: true
+    - has_having_clause: true
+    - filters_numeric_column: ot_hours

@@ -1,0 +1,52 @@
+question: "Who are the top 10 highest paid employees in the Police Department?"
+description: "Complex filtering with string matching and sorting"
+difficulty: medium
+tables_involved:
+  - payroll
+
+columns_involved:
+  - agency_name
+  - last_name
+  - first_name
+  - regular_gross_paid
+  - title_description
+
+expected_sql: |
+  SELECT 
+    first_name,
+    last_name,
+    title_description,
+    CAST(REPLACE(regular_gross_paid, '$', '') AS REAL) as total_pay
+  FROM payroll
+  WHERE agency_name LIKE '%POLICE%'
+    AND fiscal_year = 2016
+  ORDER BY total_pay DESC
+  LIMIT 10
+
+test_cases:
+  - question: "Show me the highest earners in NYPD"
+    should_pass: true
+    notes: "NYPD abbreviation should map to Police Department"
+    
+  - question: "Top 10 police officers by salary"
+    should_pass: true
+    notes: "May filter by title_description containing 'OFFICER'"
+
+edge_cases:
+  - note: "Police Department name variations"
+    sql_should: "Use LIKE '%POLICE%' to catch variations"
+  - note: "Tie handling in top N"
+    sql_should: "Use LIMIT 10, ties don't matter for this query"
+
+success_criteria:
+  must_include:
+    - "ORDER BY"
+    - "DESC"
+    - "LIMIT 10"
+  
+  must_have_filter:
+    - column: agency_name
+      pattern: "%POLICE%"
+  
+  result_check:
+    exact_row_count: 10

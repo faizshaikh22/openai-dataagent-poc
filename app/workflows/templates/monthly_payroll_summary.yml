@@ -1,0 +1,70 @@
+name: "Monthly Payroll Summary"
+description: "Standard monthly payroll report by agency with top earners breakdown"
+category: "payroll"
+tags: ["monthly", "summary", "payroll", "agencies"]
+
+parameters:
+  - name: fiscal_year
+    type: int
+    required: true
+    description: "Fiscal year to analyze (e.g., 2024)"
+  
+  - name: agency_filter
+    type: string
+    required: false
+    default: null
+    description: "Filter by agency name (partial match)"
+  
+  - name: limit
+    type: int
+    required: false
+    default: 20
+    description: "Number of agencies to show"
+
+steps:
+  - type: query
+    description: "Calculate total payroll by agency"
+    sql_template: |
+      SELECT 
+        agency_name,
+        SUM(CAST(REPLACE(regular_gross_paid, '$', '') AS REAL)) as total_payroll,
+        SUM(CAST(REPLACE(total_ot_paid, '$', '') AS REAL)) as total_overtime,
+        COUNT(*) as employee_count,
+        AVG(CAST(REPLACE(regular_gross_paid, '$', '') AS REAL)) as avg_salary
+      FROM payroll
+      WHERE fiscal_year = {{ fiscal_year }}
+      {% if agency_filter %}
+        AND agency_name LIKE '%{{ agency_filter }}%'
+      {% endif %}
+      GROUP BY agency_name
+      ORDER BY total_payroll DESC
+      LIMIT {{ limit }}
+  
+  - type: visualize
+    chart_type: bar
+    x_axis: agency_name
+    y_axis: total_payroll
+    title: "Total Payroll by Agency - FY{{ fiscal_year }}"
+  
+  - type: query
+    description: "Get top 10 individual earners"
+    sql_template: |
+      SELECT 
+        first_name,
+        last_name,
+        agency_name,
+        title_description,
+        CAST(REPLACE(regular_gross_paid, '$', '') AS REAL) as total_pay
+      FROM payroll
+      WHERE fiscal_year = {{ fiscal_year }}
+      {% if agency_filter %}
+        AND agency_name LIKE '%{{ agency_filter }}%'
+      {% endif %}
+      ORDER BY total_pay DESC
+      LIMIT 10
+  
+  - type: visualize
+    chart_type: bar
+    x_axis: last_name
+    y_axis: total_pay
+    title: "Top 10 Earners - FY{{ fiscal_year }}"

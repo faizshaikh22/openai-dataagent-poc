@@ -1,0 +1,53 @@
+name: "Agency Comparison"
+description: "Compare two agencies side by side on key metrics"
+category: "comparison"
+tags: ["comparison", "agencies", "metrics"]
+
+parameters:
+  - name: fiscal_year
+    type: int
+    required: true
+    description: "Fiscal year to analyze"
+  
+  - name: agency_1
+    type: string
+    required: true
+    description: "First agency name (e.g., POLICE)"
+  
+  - name: agency_2
+    type: string
+    required: true
+    description: "Second agency name (e.g., FIRE)"
+
+steps:
+  - type: query
+    description: "Compare key metrics between agencies"
+    sql_template: |
+      SELECT 
+        'Agency 1' as comparison,
+        agency_name,
+        COUNT(*) as employee_count,
+        SUM(CAST(REPLACE(regular_gross_paid, '$', '') AS REAL)) as total_payroll,
+        AVG(CAST(REPLACE(regular_gross_paid, '$', '') AS REAL)) as avg_salary,
+        SUM(CAST(REPLACE(total_ot_paid, '$', '') AS REAL)) as total_overtime
+      FROM payroll
+      WHERE fiscal_year = {{ fiscal_year }}
+        AND agency_name LIKE '%{{ agency_1 }}%'
+      GROUP BY agency_name
+      
+      UNION ALL
+      
+      SELECT 
+        'Agency 2' as comparison,
+        agency_name,
+        COUNT(*) as employee_count,
+        SUM(CAST(REPLACE(regular_gross_paid, '$', '') AS REAL)) as total_payroll,
+        AVG(CAST(REPLACE(regular_gross_paid, '$', '') AS REAL)) as avg_salary,
+        SUM(CAST(REPLACE(total_ot_paid, '$', '') AS REAL)) as total_overtime
+      FROM payroll
+      WHERE fiscal_year = {{ fiscal_year }}
+        AND agency_name LIKE '%{{ agency_2 }}%'
+      GROUP BY agency_name
+  
+  - type: analyze
+    description: "Calculate percentage differences"

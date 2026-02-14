@@ -12,7 +12,7 @@ for var in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
     os.environ.pop(var, None)
 
 # Initialize client with explicit httpx client to avoid proxy issues
-http_client = httpx.Client(timeout=60.0)
+http_client = httpx.Client(timeout=120.0)
 
 client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",

@@ -1,0 +1,60 @@
+# Test case format for golden SQL evaluation
+# Each file defines a question-answer pair with expected SQL and metadata
+
+question: "What is the total payroll by agency for fiscal year 2016?"
+description: "Basic aggregation with GROUP BY on agency_name"
+difficulty: easy
+tables_involved:
+  - payroll
+
+columns_involved:
+  - agency_name
+  - fiscal_year
+  - regular_gross_paid
+
+expected_sql: |
+  SELECT 
+    agency_name,
+    SUM(CAST(REPLACE(regular_gross_paid, '$', '') AS REAL)) as total_payroll,
+    COUNT(*) as employee_count
+  FROM payroll
+  WHERE fiscal_year = 2016
+  GROUP BY agency_name
+  ORDER BY total_payroll DESC
+  LIMIT 100
+
+test_cases:
+  # Variations that should produce semantically equivalent SQL
+  - question: "Show me how much each agency spent on payroll in 2016"
+    should_pass: true
+    notes: "Different wording, same intent"
+    
+  - question: "Which agencies have the highest payroll expenses for FY2016?"
+    should_pass: true
+    notes: "Asks for 'highest' but should still group and sum"
+
+  - question: "Total payroll by agency"  
+    should_pass: false
+    notes: "Missing year filter - should fail or ask for clarification"
+
+  # Edge cases
+edge_cases:
+  - note: "NULL handling in salary fields"
+    sql_should: "Handle NULLs with COALESCE or WHERE clause"
+  
+  - note: "Agency name normalization"
+    sql_should: "Use exact matching or standardize casing"
+
+# Success criteria
+success_criteria:
+  must_include:
+    - "GROUP BY agency_name"
+    - "SUM"
+    - "fiscal_year = 2016"
+  
+  result_check:
+    min_rows: 5  # Should return at least 5 agencies
+    max_rows: 200
+    check_columns_present:
+      - agency_name
+      - total_payroll
