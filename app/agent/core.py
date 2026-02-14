@@ -1,8 +1,8 @@
 import re
 import json
 import asyncio
-from database import get_schema_info, execute_query
-from llm import query_llm_sync
+from app.database.sqlite import db_adapter
+from app.utils.llm import query_llm_sync
 
 MAX_RETRIES = 3
 
@@ -26,26 +26,29 @@ def extract_json_block(text):
 
 async def process_question_stream(question: str):
     """
-    Generator that yields JSON strings for Server-Sent Events (SSE).
-    Events:
-    - {"type": "step", "step": "...", "content": "...", "reasoning": "..."}
-    - {"type": "final", "final_answer": "...", "data": ..., "chart": ...}
+    Enhanced Agent with Context Enrichment.
     """
-    schema = get_schema_info()
+    # Use the new rich context function from adapter
+    context = db_adapter.get_rich_context()
     
     # --- Phase 1: Generate SQL ---
     system_prompt = f"""
     You are an expert Data Agent. 
     Your goal is to answer user questions by querying a SQLite database.
     
-    {schema}
+    ### Database Context
+    {context}
     
-    Rules:
+    ### Rules
     1. Output ONLY standard SQLite SQL inside ```sql``` code blocks.
     2. Do not use Markdown formatting outside the code block for the SQL.
     3. If the question cannot be answered with the data, say "I cannot answer this with the available data."
     4. Use 'LIKE' for loose string matching (e.g. agency names).
     5. Always LIMIT results to 100 unless specified otherwise.
+    6. IMPORTANT: Check the 'Column Insights' section above.
+       - Use the 'Possible values' list for exact matches in WHERE clauses.
+       - Use 'Sample values' to understand data formats (dates, currency).
+       - Salary/Money fields are TEXT with '$'. You MUST use `CAST(REPLACE(col, '$', '') AS REAL)` for calculations.
     """
     
     messages = [
@@ -54,10 +57,8 @@ async def process_question_stream(question: str):
     ]
     
     # Yield planning step start
-    yield json.dumps({"type": "status", "message": "Planning query..."})
+    yield json.dumps({"type": "status", "message": "Analyzing schema & planning..."})
     
-    # For now, we still use sync LLM call for simplicity in logic, but yield the result immediately
-    # (To do true token streaming we'd need to refactor llm.py heavily)
     reasoning, content = query_llm_sync(messages)
     
     yield json.dumps({
@@ -84,7 +85,7 @@ async def process_question_stream(question: str):
         yield json.dumps({"type": "status", "message": f"Executing SQL (Attempt {attempt+1})..."})
         yield json.dumps({"type": "step", "step": "execution", "sql": sql, "attempt": attempt + 1})
         
-        result = execute_query(sql)
+        result = db_adapter.execute_query(sql)
         
         if "error" in result:
             error_msg = result["error"]
@@ -184,4 +185,3 @@ async def process_question_stream(question: str):
         "data": query_result,
         "chart": chart_def
     })
-
