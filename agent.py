@@ -1,162 +1,187 @@
-import requests
-import json
-import os
 import re
-from tools import get_schema, run_sql, search_docs, read_memory, update_memory
+import json
+import asyncio
+from database import get_schema_info, execute_query
+from llm import query_llm_sync
 
-NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY")
-API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-MODEL = "moonshotai/kimi-k2.5"
+MAX_RETRIES = 3
 
-class DataAgent:
-    def __init__(self):
-        self.schema = get_schema()
-        self.max_steps = 10
-        self.messages = [] # Use a structured message history
+def extract_code_block(text, lang="sql"):
+    pattern = rf"```{lang}\s*(.*?)```"
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return None
 
-    def _get_system_prompt(self):
-        memories = read_memory()
-        memory_text = "\n".join([f"- {m}" for m in memories]) if memories else "No memories yet."
+def extract_json_block(text):
+    pattern = r"```json\s*(.*?)```"
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1:
+        return text[start:end+1]
+    return None
 
-        return f"""You are a sophisticated Data Agent. You have access to a SQLite database and documentation.
-Your goal is to answer the user's question accurately by querying the database or checking documentation.
-
-**Capabilities & Rules:**
-1.  **Schema Grounding:** Use the provided schema exactly. Do not hallucinate columns.
-2.  **Docs First:** If a term is ambiguous (e.g. "Gross Revenue"), check `search_docs` first.
-3.  **Self-Correction:** If a SQL query fails, read the error, think about why, and try a fixed query.
-4.  **Memory:** If the user corrects you (e.g., "Revenue excludes tax"), use `update_memory` to save it. Check "Current Memory" for past corrections.
-5.  **Ambiguity:** If the request is vague, ask the user for clarification.
-
-**Tools:**
-- `run_sql`: Execute a SQL query. Input: The SQL string (e.g., "SELECT * FROM orders LIMIT 5").
-- `search_docs`: Search documentation. Input: Search term (e.g., "Gross Revenue").
-- `update_memory`: Save a fact to memory. Input: The fact string.
-- `ask_user`: Ask the user for clarification. Input: The question to ask.
-
-**Response Format:**
-Use the following format exactly for every step:
-
-Thought: <reasoning about what to do next>
-Action: <tool_name>
-Action Input: <tool_input>
-
-I will then provide the result as:
-Observation: <tool_output>
-
-When you have the answer, respond with:
-Final Answer: <your final answer>
-
-**Database Schema:**
-{self.schema}
-
-**Current Memory:**
-{memory_text}
-"""
-
-    def call_llm(self, messages):
-        headers = {
-            "Authorization": f"Bearer {NVIDIA_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": MODEL,
-            "messages": messages,
-            "max_tokens": 1024,
-            "temperature": 0.1,
-            "stop": ["Observation:"] # Stop generation when it's time for an observation
-        }
-
-        try:
-            response = requests.post(API_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            content = response.json()['choices'][0]['message']['content']
-            return content
-        except Exception as e:
-            print(f"LLM Error: {e}")
-            return "Error calling LLM."
-
-    def run(self, user_input):
-        # Start a fresh conversation for this turn, or continue if multi-turn?
-        # For POC, let's reset messages per request but keep system prompt fresh.
-        # Actually, if we want multi-turn context (TC-12), we should keep messages.
-
-        # Reset messages if it's the first turn, or keep appending?
-        # Let's assume stateless per request for simplicity, OR pass session_id.
-        # But wait, TC-12 requires context. So I should persist `self.messages`.
-
-        if not self.messages:
-            self.messages = [{"role": "system", "content": self._get_system_prompt()}]
-
-        self.messages.append({"role": "user", "content": user_input})
-
-        steps = []
-        final_answer = ""
-
-        for i in range(self.max_steps):
-            # Call LLM
-            response = self.call_llm(self.messages)
-            if not response:
-                return "Error: Empty response from LLM.", steps
-
-            # Append Assistant response
-            self.messages.append({"role": "assistant", "content": response})
-            steps.append(response)
-
-            # Parse for Final Answer
-            if "Final Answer:" in response:
-                final_answer = response.split("Final Answer:")[-1].strip()
-                # Clean up history? Maybe keep it for context.
-                return final_answer, steps
-
-            # Parse Action
-            # Use regex to find the LAST Action/Input pair if multiple (which shouldn't happen with stop sequence)
-            action_match = re.search(r"Action:\s*(.+?)\nAction Input:\s*(.+)", response, re.DOTALL)
-
-            if action_match:
-                tool_name = action_match.group(1).strip()
-                tool_input = action_match.group(2).strip()
-
-                # Execute Tool
-                observation_content = ""
-                if tool_name == "run_sql":
-                    observation_content = run_sql(tool_input)
-                elif tool_name == "search_docs":
-                    observation_content = search_docs(tool_input)
-                elif tool_name == "update_memory":
-                    observation_content = update_memory(tool_input)
-                elif tool_name == "ask_user":
-                    return f"CLARIFICATION REQUIRED: {tool_input}", steps
-                else:
-                    observation_content = f"Error: Unknown tool '{tool_name}'. Valid tools: run_sql, search_docs, update_memory, ask_user."
-
-                # Append Observation as User message (common ReAct pattern)
-                obs_message = f"Observation: {observation_content}"
-                self.messages.append({"role": "user", "content": obs_message})
-                steps.append(obs_message)
-            else:
-                # If no action and no final answer, force a thought?
-                # Or assume it's chatting.
-                if "Thought:" not in response and "Action:" not in response:
-                     # Maybe it just answered directly?
-                     return response, steps
-
-                # If it had a thought but no action, prompt it to continue
-                self.messages.append({"role": "user", "content": "Observation: You didn't provide an Action. Please specify an Action or Final Answer."})
-
-        return "Error: Maximum steps reached.", steps
-
-if __name__ == "__main__":
-    agent = DataAgent()
-    print("Agent initialized. Type 'quit' to exit.")
-    while True:
-        try:
-            q = input("User: ")
-            if q.lower() == 'quit': break
-            ans, thoughts = agent.run(q)
-            print(f"Agent: {ans}")
-        except KeyboardInterrupt:
+async def process_question_stream(question: str):
+    """
+    Generator that yields JSON strings for Server-Sent Events (SSE).
+    Events:
+    - {"type": "step", "step": "...", "content": "...", "reasoning": "..."}
+    - {"type": "final", "final_answer": "...", "data": ..., "chart": ...}
+    """
+    schema = get_schema_info()
+    
+    # --- Phase 1: Generate SQL ---
+    system_prompt = f"""
+    You are an expert Data Agent. 
+    Your goal is to answer user questions by querying a SQLite database.
+    
+    {schema}
+    
+    Rules:
+    1. Output ONLY standard SQLite SQL inside ```sql``` code blocks.
+    2. Do not use Markdown formatting outside the code block for the SQL.
+    3. If the question cannot be answered with the data, say "I cannot answer this with the available data."
+    4. Use 'LIKE' for loose string matching (e.g. agency names).
+    5. Always LIMIT results to 100 unless specified otherwise.
+    """
+    
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": question}
+    ]
+    
+    # Yield planning step start
+    yield json.dumps({"type": "status", "message": "Planning query..."})
+    
+    # For now, we still use sync LLM call for simplicity in logic, but yield the result immediately
+    # (To do true token streaming we'd need to refactor llm.py heavily)
+    reasoning, content = query_llm_sync(messages)
+    
+    yield json.dumps({
+        "type": "step", 
+        "step": "plan", 
+        "reasoning": reasoning, 
+        "content": content
+    })
+    
+    sql = extract_code_block(content, "sql")
+    if not sql:
+        yield json.dumps({
+            "type": "final",
+            "final_answer": content,
+            "data": None,
+            "chart": None
+        })
+        return
+    
+    # --- Phase 2: Execution Loop ---
+    query_result = None
+    
+    for attempt in range(MAX_RETRIES):
+        yield json.dumps({"type": "status", "message": f"Executing SQL (Attempt {attempt+1})..."})
+        yield json.dumps({"type": "step", "step": "execution", "sql": sql, "attempt": attempt + 1})
+        
+        result = execute_query(sql)
+        
+        if "error" in result:
+            error_msg = result["error"]
+            yield json.dumps({"type": "step", "step": "error", "message": error_msg})
+            
+            # Retry prompt
+            retry_msg = f"The query failed with error: {error_msg}. Please correct the SQL. Output ONLY the fixed SQL inside ```sql```."
+            messages.append({"role": "assistant", "content": content})
+            messages.append({"role": "user", "content": retry_msg})
+            
+            yield json.dumps({"type": "status", "message": "Refining SQL..."})
+            reasoning, content = query_llm_sync(messages)
+            yield json.dumps({"type": "step", "step": "retry_plan", "reasoning": reasoning, "content": content})
+            
+            sql = extract_code_block(content, "sql")
+            if not sql:
+                break 
+        else:
+            query_result = result
+            yield json.dumps({"type": "step", "step": "success", "rows_returned": len(result["data"])})
             break
-        except Exception as e:
-            print(f"Error: {e}")
+            
+    if not query_result or "error" in query_result:
+        yield json.dumps({
+            "type": "final",
+            "final_answer": "I failed to execute a valid query after multiple attempts.",
+            "data": None,
+            "chart": None
+        })
+        return
+
+    # --- Phase 3: Analysis & Visualization ---
+    yield json.dumps({"type": "status", "message": "Analyzing results..."})
+    
+    data_preview = query_result["data"][:5]
+    columns = query_result["columns"]
+    full_data_len = len(query_result["data"])
+    
+    analysis_prompt = f"""
+    The query executed successfully.
+    Rows returned: {full_data_len}
+    Columns: {columns}
+    Sample Data: {data_preview}
+    
+    Task:
+    1. Provide a concise answer to the original question based on this data.
+    2. Determine if this data should be visualized.
+    3. If yes, output a JSON object inside ```json``` compatible with Chart.js:
+       {{ "chart_type": "bar", "x_axis": "column_name", "y_axis": "column_name", "title": "Chart Title" }}
+       - If no chart is suitable, output {{ "chart_type": null }}
+    """
+    
+    messages.append({"role": "user", "content": analysis_prompt})
+    reasoning, content = query_llm_sync(messages)
+    yield json.dumps({"type": "step", "step": "analysis", "reasoning": reasoning, "content": content})
+    
+    chart_config = extract_json_block(content)
+    chart_def = None
+    if chart_config:
+        try:
+            chart_meta = json.loads(chart_config)
+            if chart_meta.get("chart_type"):
+                x_col = chart_meta.get("x_axis")
+                y_col = chart_meta.get("y_axis")
+                
+                if x_col in columns and y_col in columns:
+                    labels = [row[x_col] for row in query_result["data"]]
+                    values = [row[y_col] for row in query_result["data"]]
+                    
+                    chart_def = {
+                        "type": chart_meta["chart_type"],
+                        "data": {
+                            "labels": labels,
+                            "datasets": [{
+                                "label": chart_meta.get("title", y_col),
+                                "data": values,
+                                "backgroundColor": "rgba(75, 192, 192, 0.2)",
+                                "borderColor": "rgba(75, 192, 192, 1)",
+                                "borderWidth": 1
+                            }]
+                        },
+                        "options": {
+                            "responsive": True,
+                            "scales": {
+                                "y": {"beginAtZero": True}
+                            }
+                        }
+                    }
+        except:
+            pass
+
+    final_text = re.sub(r"```json.*?```", "", content, flags=re.DOTALL).strip()
+    
+    yield json.dumps({
+        "type": "final",
+        "final_answer": final_text,
+        "data": query_result,
+        "chart": chart_def
+    })
+

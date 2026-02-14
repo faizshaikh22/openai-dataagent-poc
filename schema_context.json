@@ -1,0 +1,21 @@
+{
+    "payroll": {
+        "description": "Contains payroll data for New York City employees. Each row represents an employee's payroll details for a specific fiscal year. NOTE: Salary and monetary columns contain '$' symbols and are stored as TEXT. You must strip the '$' and cast to numeric for calculations (e.g. CAST(REPLACE(base_salary, '$', '') AS REAL)).",
+        "columns": {
+            "fiscal_year": "The fiscal year of the payroll record.",
+            "agency_name": "The city agency that employs the person.",
+            "last_name": "Employee's last name.",
+            "first_name": "Employee's first name.",
+            "work_location_borough": "The borough where the employee works (e.g., MANHATTAN, QUEENS).",
+            "title_description": "Job title of the employee.",
+            "leave_status_as_of_june_30": "Status of the employee at the end of the fiscal year (Active/Ceased/On Leave).",
+            "base_salary": "The base salary rate (Text with $).",
+            "pay_basis": "How the employee is paid (e.g., per Annum, per Day, per Hour).",
+            "regular_hours": "Number of regular hours worked.",
+            "regular_gross_paid": "Total amount paid for regular hours (Text with $).",
+            "ot_hours": "Overtime hours worked.",
+            "total_ot_paid": "Total overtime pay received (Text with $).",
+            "total_other_pay": "Other compensation received (Text with $)."
+        }
+    }
+}

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAI Data Agent POC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body { background-color: #0f172a; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        .chat-container { 
+            max-width: 1000px; 
+            margin: 0 auto; 
+            padding: 40px 20px 120px 20px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 24px;
+        }
+
+        .message { 
+            opacity: 0; 
+            animation: fadeIn 0.3s forwards; 
+            max-width: 85%;
+        }
+        @keyframes fadeIn { to { opacity: 1; } }
+
+        .user-msg { 
+            align-self: flex-end; 
+            background: linear-gradient(135deg, #3b82f6, #2563eb); 
+            color: white; 
+            padding: 12px 20px; 
+            border-radius: 20px 20px 4px 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .agent-msg { 
+            align-self: flex-start; 
+            width: 100%;
+        }
+
+        .agent-card {
+            background-color: #1e293b; 
+            border: 1px solid #334155; 
+            border-radius: 20px 20px 20px 4px; 
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Timeline / Steps Styling */
+        .step-container {
+            position: relative;
+            margin-top: 16px;
+            padding-left: 16px;
+            border-left: 2px solid #334155;
+        }
+
+        .step-box { 
+            margin-bottom: 12px;
+            position: relative;
+        }
+        
+        .step-dot {
+            position: absolute;
+            left: -21px; /* Adjust based on border width */
+            top: 4px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #64748b;
+            border: 2px solid #0f172a;
+        }
+        
+        .step-box[open] .step-dot { background-color: #10b981; }
+        .step-box.error-box .step-dot { background-color: #ef4444; }
+
+        details > summary { 
+            list-style: none; 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            gap: 8px;
+            color: #94a3b8;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+        details > summary:hover { color: #e2e8f0; }
+        details > summary::-webkit-details-marker { display: none; }
+
+        .step-content {
+            margin-top: 8px;
+            padding: 12px;
+            background-color: #0f172a;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85em;
+            color: #cbd5e1;
+            overflow-x: auto;
+        }
+
+        .reasoning { color: #94a3b8; font-style: italic; margin-bottom: 8px; display: block; }
+        
+        /* Table Styling */
+        .table-wrapper {
+            margin-top: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #334155;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+        th { background-color: #334155; color: #f1f5f9; padding: 12px; text-align: left; font-weight: 600; }
+        td { padding: 10px 12px; border-top: 1px solid #334155; background-color: #1e293b; }
+        tr:hover td { background-color: #263345; }
+
+        /* Input Area */
+        .input-area { 
+            position: fixed; 
+            bottom: 0; 
+            left: 0; 
+            width: 100%; 
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid #334155; 
+            padding: 24px;
+            z-index: 50;
+        }
+        
+        .input-wrapper {
+            max-width: 1000px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .input-box {
+            display: flex;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 12px;
+            padding: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            transition: border-color 0.2s;
+        }
+        
+        .input-box:focus-within { border-color: #3b82f6; }
+
+        input[type="text"] { 
+            flex-grow: 1; 
+            background: transparent; 
+            border: none; 
+            color: white; 
+            padding: 12px; 
+            font-size: 1em; 
+            outline: none; 
+        }
+
+        button#sendBtn { 
+            background-color: #3b82f6; 
+            color: white; 
+            border: none; 
+            border-radius: 8px; 
+            padding: 0 24px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            transition: background 0.2s; 
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        button#sendBtn:hover { background-color: #2563eb; }
+        button#sendBtn:disabled { background-color: #475569; cursor: not-allowed; opacity: 0.7; }
+
+        .loading-status {
+            position: absolute;
+            top: -30px;
+            left: 0;
+            color: #10b981;
+            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .loading-status.visible { opacity: 1; }
+
+        /* Markdown Content */
+        .md-content p { margin-bottom: 12px; line-height: 1.6; }
+        .md-content ul { list-style: disc; margin-left: 20px; margin-bottom: 12px; }
+        .md-content code { background-color: #0f172a; padding: 2px 4px; border-radius: 4px; color: #e2e8f0; }
+
+        /* Chart */
+        .chart-container { 
+            background-color: #1e293b; 
+            border-radius: 12px; 
+            padding: 20px; 
+            margin-top: 20px; 
+            border: 1px solid #334155;
+        }
+    </style>
+</head>
+<body>
+
+<div class="chat-container" id="chat">
+    <div class="message agent-msg">
+        <div class="agent-card">
+            <div class="flex items-center gap-3 mb-4 text-emerald-400">
+                <i class="ph ph-robot text-2xl"></i>
+                <span class="font-bold text-lg">Data Agent</span>
+            </div>
+            <div class="content md-content">
+                Hello! I have access to the <strong>NYC Payroll</strong> database.
+                <br>Try asking: 
+                <ul class="mt-2 text-slate-300">
+                    <li>"What is the total payroll by agency for the latest year?"</li>
+                    <li>"Show me the top 5 highest paid employees."</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="input-area">
+    <div class="input-wrapper">
+        <div id="loadingStatus" class="loading-status">
+            <i class="ph ph-spinner animate-spin"></i>
+            <span id="loadingText">Thinking...</span>
+        </div>
+        <div class="input-box">
+            <input type="text" id="userInput" placeholder="Ask a data question..." autocomplete="off">
+            <button id="sendBtn" onclick="sendMessage()">
+                <span>Send</span>
+                <i class="ph ph-paper-plane-right"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const chatDiv = document.getElementById('chat');
+    const input = document.getElementById('userInput');
+    const btn = document.getElementById('sendBtn');
+    const loadingStatus = document.getElementById('loadingStatus');
+    const loadingText = document.getElementById('loadingText');
+
+    // Handle Enter Key
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+
+    async function sendMessage() {
+        const text = input.value.trim();
+        if (!text) return;
+
+        // User Message
+        appendMessage('user', text);
+        input.value = '';
+        input.disabled = true;
+        btn.disabled = true;
+        loadingStatus.classList.add('visible');
+        loadingText.textContent = "Connecting to agent...";
+
+        // Create Agent Message Container
+        const agentContainer = createAgentContainer();
+        chatDiv.appendChild(agentContainer);
+        const stepsContainer = agentContainer.querySelector('.step-container');
+
+        // Connect to EventSource
+        const eventSource = new EventSource(`/chat_stream?message=${encodeURIComponent(text)}`);
+        
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'status') {
+                loadingText.textContent = data.message;
+            }
+            else if (data.type === 'step') {
+                renderStep(stepsContainer, data);
+            }
+            else if (data.type === 'final') {
+                renderFinal(agentContainer.querySelector('.agent-card'), data);
+                eventSource.close();
+                input.disabled = false;
+                btn.disabled = false;
+                loadingStatus.classList.remove('visible');
+                input.focus();
+            }
+        };
+
+        eventSource.onerror = function(err) {
+            console.error("EventSource failed:", err);
+            eventSource.close();
+            input.disabled = false;
+            btn.disabled = false;
+            loadingStatus.classList.remove('visible');
+            
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'text-red-400 mt-4';
+            errorDiv.textContent = 'Connection error. Please try again.';
+            agentContainer.querySelector('.agent-card').appendChild(errorDiv);
+        };
+    }
+
+    function appendMessage(role, htmlContent) {
+        const div = document.createElement('div');
+        div.className = `message ${role === 'user' ? 'user-msg' : 'agent-msg'}`;
+        if (role === 'user') {
+            div.innerHTML = htmlContent;
+        }
+        chatDiv.appendChild(div);
+        scrollToBottom();
+    }
+
+    function createAgentContainer() {
+        const div = document.createElement('div');
+        div.className = 'message agent-msg';
+        div.innerHTML = `
+            <div class="agent-card">
+                <div class="flex items-center gap-2 mb-2 text-emerald-400">
+                    <i class="ph ph-robot text-xl"></i>
+                    <span class="font-bold">Agent</span>
+                </div>
+                <div class="step-container"></div>
+            </div>
+        `;
+        return div;
+    }
+
+    function renderStep(container, step) {
+        const details = document.createElement('details');
+        details.className = `step-box ${step.step === 'error' ? 'error-box' : ''}`;
+        if (step.step === 'error') details.open = true;
+
+        // Icon Selection
+        let icon = 'ph-check-circle';
+        let label = step.step.toUpperCase();
+        if(step.step === 'plan') icon = 'ph-brain';
+        if(step.step === 'execution') icon = 'ph-database';
+        if(step.step === 'analysis') icon = 'ph-chart-bar';
+        if(step.step === 'error') icon = 'ph-warning-circle';
+
+        const summary = document.createElement('summary');
+        summary.innerHTML = `
+            <div class="step-dot"></div>
+            <i class="ph ${icon}"></i>
+            <span>${label}</span>
+        `;
+        details.appendChild(summary);
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'step-content';
+
+        if (step.step === 'plan' || step.step === 'retry_plan' || step.step === 'analysis') {
+            if (step.reasoning) {
+                // Parse markdown for the reasoning content
+                const reasoningDiv = document.createElement('div');
+                reasoningDiv.className = 'reasoning md-content';
+                reasoningDiv.innerHTML = marked.parse(step.reasoning);
+                contentDiv.appendChild(reasoningDiv);
+            }
+        } 
+        else if (step.step === 'execution') {
+            contentDiv.innerHTML = `<div>${step.sql}</div>`;
+        }
+        else if (step.step === 'error') {
+            contentDiv.innerHTML = `<div class="text-red-400">${step.message}</div>`;
+        }
+        else if (step.step === 'success') {
+            contentDiv.innerHTML = `<div class="text-emerald-400">Query successful. Rows: ${step.rows_returned}</div>`;
+        }
+
+        details.appendChild(contentDiv);
+        container.appendChild(details);
+        scrollToBottom();
+    }
+
+    function renderFinal(cardContainer, data) {
+        // Render Final Text
+        const textDiv = document.createElement('div');
+        textDiv.className = 'md-content mt-6 pt-4 border-t border-slate-700';
+        textDiv.innerHTML = marked.parse(data.final_answer || "");
+        cardContainer.appendChild(textDiv);
+
+        // Render Chart
+        if (data.chart) {
+            const chartWrapper = document.createElement('div');
+            chartWrapper.className = 'chart-container';
+            const canvas = document.createElement('canvas');
+            chartWrapper.appendChild(canvas);
+            cardContainer.appendChild(chartWrapper);
+            
+            // Adjust chart colors for dark mode
+            data.chart.options = {
+                ...data.chart.options,
+                plugins: {
+                    legend: { labels: { color: '#cbd5e1' } }
+                },
+                scales: {
+                    y: { grid: { color: '#334155' }, ticks: { color: '#cbd5e1' } },
+                    x: { grid: { color: '#334155' }, ticks: { color: '#cbd5e1' } }
+                }
+            };
+            new Chart(canvas, data.chart);
+        }
+
+        // Render Table
+        if (data.data && data.data.data && data.data.data.length > 0) {
+            const details = document.createElement('details');
+            details.className = 'mt-4';
+            const summary = document.createElement('summary');
+            summary.className = 'p-2 bg-slate-800 rounded hover:bg-slate-700 transition-colors';
+            summary.innerHTML = '<i class="ph ph-table text-emerald-400 mr-2"></i> View Raw Data Table';
+            details.appendChild(summary);
+
+            const tableWrapper = document.createElement('div');
+            tableWrapper.className = 'table-wrapper';
+            
+            let html = '<table><thead><tr>';
+            data.data.columns.forEach(col => html += `<th>${col}</th>`);
+            html += '</tr></thead><tbody>';
+            
+            data.data.data.forEach(row => {
+                html += '<tr>';
+                data.data.columns.forEach(col => html += `<td>${row[col]}</td>`);
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            
+            tableWrapper.innerHTML = html;
+            details.appendChild(tableWrapper);
+            cardContainer.appendChild(details);
+        }
+        scrollToBottom();
+    }
+
+    function scrollToBottom() {
+        // window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        // Or specific to the container if we had one scrolling independently
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+</script>
+
+</body>
+</html>
+

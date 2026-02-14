@@ -1,0 +1,42 @@
+# Python
+*__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Environment Variables
+.env
+.env.*
+
+# Distribution / Build
+build/
+dist/
+*.egg-info/
+
+# Jupyter / Notebooks
+.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+
+# Project Specific Data
+data/
+!data/.gitkeep
+memory.json
+*.db
+*.sqlite3
+
+# Configuration (keep examples)
+config.yaml
+!config.yaml.example
+
+# Logs
+*.log
+
+# DB
+payroll.db

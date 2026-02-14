@@ -3,13 +3,6 @@ import pandas as pd
 import sqlite3
 import os
 
-# Set environment variables for Kaggle if needed
-# The user provided "KGAT_95c67116032452f7fb233fd1fb3163d1" which looks like a token.
-# Kaggle usually expects username/key in ~/.kaggle/kaggle.json or env vars KAGGLE_USERNAME / KAGGLE_KEY.
-# However, kagglehub might just work for public datasets. Let's try.
-# If it fails, I'll need to ask the user for username or how to use the KGAT token specifically.
-# Assuming KGAT is not standard, but let's try standard download first.
-
 def ingest_data():
     print("Downloading NYC Payroll data...")
     try:
@@ -31,8 +24,8 @@ def ingest_data():
 
         print(f"Loading {csv_file} into pandas...")
         # Load a sample first to check columns, but for a POC let's try to load a chunk or all.
-        # It might be large. Let's load 10k rows for the POC to be safe on memory/disk.
-        df = pd.read_csv(csv_file, low_memory=False, nrows=20000)
+        # It might be large. Let's load 50k rows for the POC.
+        df = pd.read_csv(csv_file, low_memory=False, nrows=50000)
 
         # Clean column names
         df.columns = [c.lower().replace(" ", "_") for c in df.columns]
@@ -44,7 +37,7 @@ def ingest_data():
         conn = sqlite3.connect(db_file)
 
         # Write to SQLite
-        print(f"Writing 20k rows to {db_file}...")
+        print(f"Writing 50k rows to {db_file}...")
         df.to_sql("payroll", conn, if_exists="replace", index=False)
 
         conn.close()
