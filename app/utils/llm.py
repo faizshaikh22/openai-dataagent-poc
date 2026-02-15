@@ -1,9 +1,9 @@
 import os
 import sys
 
+import httpx
 from dotenv import load_dotenv
 from openai import OpenAI
-import httpx
 
 load_dotenv()
 
@@ -20,7 +20,7 @@ client = OpenAI(
     http_client=http_client,
 )
 
-MODEL = "z-ai/glm5"
+MODEL = "stepfun-ai/step-3.5-flash"
 
 
 def query_llm(messages, stream=False):

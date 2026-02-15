@@ -15,6 +15,12 @@ The objective was to replicate the "SQL generation" and "Context is Everything" 
 4.  **Evaluation**: A framework to prevent regressions in SQL generation quality.
 5.  **Portability**: Using simple file-based storage (SQLite, JSON) so the project can be cloned and adapted immediately.
 
+### Screenshot
+
+![Data Agent UI](docs/UI.png)
+
+The interface features a ChatGPT-style design with conversation history sidebar, streaming responses, and integrated charting - all built with plain HTML/CSS.
+
 ### What Was Built
 We implemented a FastAPI-based agent with the following core components:
 
