@@ -79,6 +79,7 @@ python run_evals.py
 
 This project is designed as a template. To use it with your own data:
 
-1.  **Database**: Replace `app/database/sqlite.py` with an adapter for your database (Postgres, Snowflake, etc.).
+1.  **Database**: Replace `app/database/sqlite.py` with an adapter for your database (Postgres, MySQL, Snowflake, etc.).  
+    See [DATABASE_MIGRATION.md](docs/DATABASE_MIGRATION.md) for a detailed guide.
 2.  **Context**: Update `schema_context.json` with descriptions of your tables.
 3.  **Tests**: Add your own business-critical questions to `tests/golden_sql/`.
